@@ -65,38 +65,42 @@ export default function FarmerProductUpload() {
     loadFarmerData(storedToken);
   }, [navigate]);
 
+  const [existingImages, setExistingImages] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+
   const loadFarmerData = async (authToken: string) => {
     setIsLoading(true);
     try {
       // 1. Fetch Profile to get user details
-      const profileRes = await fetch(`${CONFIG_API_URL}/api/auth/profile`, {
+      const profileRes = await fetch(`${CONFIG_API_URL}/api/profile/me`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const profileData = await profileRes.json();
       if (!profileRes.ok) throw new Error(profileData.message);
       
-      setUser(profileData.user);
+      const baseUser = profileData.baseUser;
+      setUser(baseUser);
 
-      // 2. Fetch Farm list to find if this farmer has a farm
-      const farmRes = await fetch(`${CONFIG_API_URL}/api/farms`);
+      // 2. Fetch Farm list from public search and find this farmer's farm
+      const farmRes = await fetch(`${CONFIG_API_URL}/api/search`);
       const farmData = await farmRes.json();
       if (farmRes.ok) {
-        // Find farm belonging to this farmer
-        const myFarm = farmData.find((f: any) => f.farmerId === profileData.user.id || f.farmerId === profileData.user._id);
+        const myFarm = farmData.find((f: any) => f.farmerId?._id === baseUser._id || f.farmerId === baseUser._id);
         if (myFarm) {
           setFarm(myFarm);
           setFarmName(myFarm.farmName || "");
           setDescription(myFarm.description || "");
-          setAddress(myFarm.address || "");
+          setAddress(myFarm.location?.address || myFarm.address || "");
           setCategory(myFarm.category || "Organic Vegetables");
           setPricing(myFarm.pricing?.toString() || "");
           setAvailability(myFarm.availability !== undefined ? myFarm.availability : true);
+          setExistingImages(myFarm.images || []);
           setImages(myFarm.images || []);
         }
       }
 
-      // 3. Fetch Bookings
-      const bookRes = await fetch(`${CONFIG_API_URL}/api/bookings`, {
+      // 3. Fetch Bookings for this farmer
+      const bookRes = await fetch(`${CONFIG_API_URL}/api/bookings/farmer`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (bookRes.ok) {
@@ -104,7 +108,7 @@ export default function FarmerProductUpload() {
         setBookings(bookData);
       }
     } catch (err) {
-      console.error(err);
+      console.error("Error loading farmer data:", err);
     } finally {
       setIsLoading(false);
     }
@@ -113,6 +117,7 @@ export default function FarmerProductUpload() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setImageFiles((prev) => [...prev, file]);
       const reader = new FileReader();
       reader.onload = () => {
         setImages((prev) => [...prev, reader.result as string]);
@@ -122,7 +127,18 @@ export default function FarmerProductUpload() {
   };
 
   const removeImage = (index: number) => {
+    const previewToRemove = images[index];
     setImages((prev) => prev.filter((_, i) => i !== index));
+
+    if (previewToRemove.startsWith("data:")) {
+      // Newly uploaded image
+      // Find the index among newly uploaded files
+      const newUploadIndex = images.slice(0, index).filter(img => img.startsWith("data:")).length;
+      setImageFiles((prev) => prev.filter((_, i) => i !== newUploadIndex));
+    } else {
+      // Existing Cloudinary image
+      setExistingImages((prev) => prev.filter(url => url !== previewToRemove));
+    }
   };
 
   const handleFarmSubmit = async (e: React.FormEvent) => {
@@ -134,29 +150,40 @@ export default function FarmerProductUpload() {
 
     setIsSubmitLoading(true);
     try {
-      const res = await fetch(`${CONFIG_API_URL}/api/farms`, {
-        method: "POST",
+      const dataPayload = new FormData();
+      dataPayload.append("farmName", farmName);
+      dataPayload.append("description", description);
+      dataPayload.append("category", category);
+      dataPayload.append("pricing", pricing);
+      dataPayload.append("availability", availability.toString());
+      dataPayload.append("address", address);
+      dataPayload.append("lat", "10.787"); // Default location coordinates
+      dataPayload.append("lng", "79.1378");
+
+      // Append new files
+      imageFiles.forEach((file) => {
+        dataPayload.append("images", file);
+      });
+
+      // If updating, use PUT /api/farms/:id; if creating, use POST /api/farms
+      const isEdit = !!farm;
+      const url = isEdit ? `${CONFIG_API_URL}/api/farms/${farm._id}` : `${CONFIG_API_URL}/api/farms`;
+      const method = isEdit ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method: method,
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          farmName,
-          description,
-          address,
-          category,
-          pricing: parseFloat(pricing),
-          availability,
-          images,
-        }),
+        body: dataPayload,
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to update farm");
+      if (!res.ok) throw new Error(data.message || "Failed to update farm details");
 
-      setFarm(data.farm);
-      triggerToast("Farm details updated successfully!");
-      loadFarmerData(token); // refresh
+      triggerToast(isEdit ? "Farm details updated successfully!" : "Farm registered successfully!");
+      setImageFiles([]); // Clear new uploads state
+      loadFarmerData(token);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -166,13 +193,13 @@ export default function FarmerProductUpload() {
 
   const handleBookingAction = async (bookingId: string, status: "Accepted" | "Rejected") => {
     try {
-      const res = await fetch(`${CONFIG_API_URL}/api/bookings/${bookingId}`, {
-        method: "PUT",
+      const res = await fetch(`${CONFIG_API_URL}/api/bookings/${bookingId}/status`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ bookingStatus: status }),
       });
 
       const data = await res.json();

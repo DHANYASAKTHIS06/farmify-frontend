@@ -83,7 +83,7 @@ export default function AIAssistant() {
     setIsTyping(true);
 
     try {
-      const response = await fetch(`${CONFIG_API_URL}/api/chatbot`, {
+      const response = await fetch(`${CONFIG_API_URL}/api/chatbot/message`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

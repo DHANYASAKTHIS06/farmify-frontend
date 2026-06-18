@@ -84,28 +84,35 @@ export default function Profile() {
     setIsLoading(true);
     try {
       // 1. Fetch Profile
-      const res = await fetch(`${CONFIG_API_URL}/api/auth/profile`, {
+      const res = await fetch(`${CONFIG_API_URL}/api/profile/me`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      setUser(data.user);
-      setName(data.user?.name || "");
-      setContactNumber(data.user?.contactNumber || "");
-      setLocationName(data.user?.locationName || "");
-      setProfilePicture(data.user?.profilePicture || "");
+      const baseUser = data.baseUser;
+      setUser(baseUser);
+      setName(baseUser?.name || "");
+      setProfilePicture(baseUser?.profilePicture || "");
 
-      if (data.user?.role === "Farmer" && data.farmerProfile) {
-        setFarmerProfile(data.farmerProfile);
-        setFarmName(data.farmerProfile.farmName || "");
-        setFarmDescription(data.farmerProfile.farmDescription || "");
-        setFarmAddress(data.farmerProfile.farmAddress || "");
-        setFarmCategory(data.farmerProfile.farmCategory || "");
+      const isFarmer = baseUser?.role === "Farmer";
+      const detailedFarmer = data.detailedFarmer;
+      
+      if (isFarmer && detailedFarmer) {
+        setFarmerProfile(detailedFarmer);
+        setContactNumber(detailedFarmer.contactNumber || "");
+        setFarmName(detailedFarmer.farmName || "");
+        setFarmDescription(detailedFarmer.description || "");
+        setFarmAddress(detailedFarmer.address || "");
+        setFarmCategory(detailedFarmer.category || "");
+      } else {
+        setContactNumber(baseUser?.contactNumber || "");
+        setLocationName(baseUser?.locationName || "");
       }
 
-      // 2. Fetch User bookings
-      const bookRes = await fetch(`${CONFIG_API_URL}/api/bookings`, {
+      // 2. Fetch User bookings based on role
+      const bookingEndpoint = isFarmer ? "farmer" : "customer";
+      const bookRes = await fetch(`${CONFIG_API_URL}/api/bookings/${bookingEndpoint}`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const bookData = await bookRes.json();
@@ -120,42 +127,41 @@ export default function Profile() {
     }
   };
 
+  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
+
   const handleEditProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload: any = {
-        name,
-        contactNumber,
-        locationName,
-        profilePicture,
-      };
-
-      if (user?.role === "Farmer") {
-        payload.farmName = farmName;
-        payload.farmDescription = farmDescription;
-        payload.farmAddress = farmAddress;
-        payload.farmCategory = farmCategory;
+      const dataPayload = new FormData();
+      dataPayload.append("name", name);
+      dataPayload.append("contactNumber", contactNumber);
+      
+      if (profilePictureFile) {
+        dataPayload.append("profilePicture", profilePictureFile);
       }
 
-      const res = await fetch(`${CONFIG_API_URL}/api/auth/profile`, {
+      if (user?.role === "Farmer") {
+        dataPayload.append("farmName", farmName);
+        dataPayload.append("description", farmDescription);
+        dataPayload.append("address", farmAddress);
+        dataPayload.append("contactNumber", contactNumber); // Also update farmer contact
+      }
+
+      const res = await fetch(`${CONFIG_API_URL}/api/profile/edit`, {
         method: "PUT",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(payload),
+        body: dataPayload,
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      // Update state
-      setUser(data.user);
-      if (data.user.role === "Farmer") {
-        setFarmerProfile(data.user.farmerProfile);
-      }
       setShowEditDialog(false);
       triggerToast("Profile updated successfully!");
+      // Reload profile
+      loadUserProfile(token);
     } catch (err: any) {
       alert(err.message);
     }
@@ -163,16 +169,18 @@ export default function Profile() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!oldPassword || !newPassword) return;
+    if (!newPassword) return;
 
     try {
-      const res = await fetch(`${CONFIG_API_URL}/api/auth/change-password`, {
-        method: "POST",
+      const dataPayload = new FormData();
+      dataPayload.append("password", newPassword);
+
+      const res = await fetch(`${CONFIG_API_URL}/api/profile/edit`, {
+        method: "PUT",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ oldPassword, newPassword }),
+        body: dataPayload,
       });
 
       const data = await res.json();
@@ -190,6 +198,7 @@ export default function Profile() {
   const handleProfilePicUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setProfilePictureFile(file);
       const reader = new FileReader();
       reader.onload = () => {
         setProfilePicture(reader.result as string);
@@ -288,7 +297,7 @@ export default function Profile() {
                 <DollarSign className="w-4 h-4 text-green-600" />
                 Earnings Summary
               </div>
-              <h3 className="text-2xl font-extrabold text-green-800">₹{farmerProfile.earningsSummary || 0}</h3>
+              <h3 className="text-2xl font-extrabold text-green-800">₹{farmerProfile.earnings || 0}</h3>
               <span className="text-[10px] text-gray-400 font-medium mt-1">From accepted visits</span>
             </div>
 
@@ -311,7 +320,7 @@ export default function Profile() {
                 </Badge>
               </div>
               <span className="text-[10px] text-gray-400 font-medium mt-2">
-                {farmerProfile.remarks || "Under review by admin"}
+                {farmerProfile.adminRemarks || "Under review by admin"}
               </span>
             </div>
           </div>

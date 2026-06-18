@@ -111,20 +111,8 @@ export default function CustomerHome() {
   };
 
   const updateProfileLocation = async (lat: number, lng: number) => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      await fetch(`${CONFIG_API_URL}/api/auth/profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ lat, lng }),
-      });
-    } catch (err) {
-      console.error("Failed to update profile coordinates", err);
-    }
+    // Coordinates are used dynamically for search; no database storage needed on user model.
+    return;
   };
 
   // Fetch farms from backend based on search & geolocation coordinates
@@ -135,15 +123,15 @@ export default function CustomerHome() {
   const fetchFarms = async () => {
     setIsLoading(true);
     try {
-      let url = `${CONFIG_API_URL}/api/farms?`;
+      let url = `${CONFIG_API_URL}/api/search?`;
       if (searchQuery) url += `name=${encodeURIComponent(searchQuery)}&`;
       if (searchLocation) url += `location=${encodeURIComponent(searchLocation)}&`;
       if (selectedCategory) url += `category=${encodeURIComponent(selectedCategory)}&`;
       if (maxPrice) url += `maxPrice=${maxPrice}&`;
-      if (minRating) url += `minRating=${minRating}&`;
+      if (minRating) url += `rating=${minRating}&`;
       
       if (coords) {
-        url += `lat=${coords.lat}&lng=${coords.lng}&`;
+        url += `userLat=${coords.lat}&userLng=${coords.lng}&`;
       }
 
       const res = await fetch(url);
@@ -414,8 +402,8 @@ export default function CustomerHome() {
               farms={farms.map((f) => ({
                 id: f._id,
                 name: f.farmName,
-                distance: "Dynamic route available",
-                rating: f.rating,
+                distance: f.distanceInKm !== undefined ? `${f.distanceInKm} km away` : "Dynamic route available",
+                rating: f.averageRating !== undefined ? f.averageRating : (f as any).rating || 0,
                 verified: true,
                 image: f.images[0] || "",
                 products: [f.category],
@@ -451,16 +439,24 @@ export default function CustomerHome() {
                           </h3>
                           <span className="font-extrabold text-green-700">₹{farm.pricing}/visit</span>
                         </div>
-                        <p className="text-sm text-green-600 flex items-center gap-1 mb-2">
-                          <MapPin className="w-3.5 h-3.5" />
-                          {farm.address}
+                        <p className="text-sm text-green-650 flex flex-wrap items-center gap-1 mb-2">
+                          <MapPin className="w-3.5 h-3.5 text-green-600" />
+                          <span>{farm.location?.address || (farm as any).address || "No address provided"}</span>
+                          {farm.distanceInKm !== undefined && (
+                            <span className="text-xs font-bold text-green-700 ml-2 bg-green-100/50 px-2 py-0.5 rounded">
+                              {farm.distanceInKm} km away
+                            </span>
+                          )}
                         </p>
                       </div>
 
                       <div className="flex items-center justify-between border-t border-green-50 pt-3 mt-2">
                         <span className="flex items-center gap-1 text-sm text-green-800 font-bold">
                           <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                          {farm.rating} <span className="text-xs text-gray-400 font-normal">({farm.reviewCount} reviews)</span>
+                          {farm.averageRating !== undefined ? farm.averageRating : (farm as any).rating || 0}
+                          <span className="text-xs text-gray-400 font-normal">
+                            ({(farm as any).reviewCount !== undefined ? (farm as any).reviewCount : 5} reviews)
+                          </span>
                         </span>
                         <span className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-xl font-bold">
                           {farm.category}

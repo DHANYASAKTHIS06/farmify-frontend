@@ -12,7 +12,6 @@ import PickYourOwnBooking from "./screens/PickYourOwnBooking";
 import HomeDelivery from "./screens/HomeDelivery";
 import Login from "./screens/Login";
 import Register from "./screens/Register";
-import OtpVerification from "./screens/OtpVerification";
 import ForgotPassword from "./screens/ForgotPassword";
 import ResetPassword from "./screens/ResetPassword";
 import AdminDashboard from "./screens/AdminDashboard";
@@ -29,10 +28,6 @@ export const router = createBrowserRouter([
   {
     path: "/register",
     Component: Register,
-  },
-  {
-    path: "/otp-verification",
-    Component: OtpVerification,
   },
   {
     path: "/forgot-password",

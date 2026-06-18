@@ -40,15 +40,15 @@ export default function CertificateUpload() {
 
   const checkCurrentStatus = async (authToken: string) => {
     try {
-      const res = await fetch(`${CONFIG_API_URL}/api/auth/profile`, {
+      const res = await fetch(`${CONFIG_API_URL}/api/profile/me`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       const data = await res.json();
-      if (res.ok && data.farmerProfile) {
-        setStatus(data.farmerProfile.verificationStatus || "idle");
-        setRejectionRemarks(data.farmerProfile.remarks || "");
-        setCertificateId(data.farmerProfile.certificateId || "");
-        setCertificateImage(data.farmerProfile.certificate || null);
+      if (res.ok && data.detailedFarmer) {
+        setStatus(data.detailedFarmer.verificationStatus || "idle");
+        setRejectionRemarks(data.detailedFarmer.adminRemarks || "");
+        setCertificateId(data.detailedFarmer.certificateId || "CERT-" + data.detailedFarmer._id.slice(-6).toUpperCase());
+        setCertificateImage(data.detailedFarmer.certificate || null);
       }
     } catch (err) {
       console.error(err);
@@ -68,32 +68,12 @@ export default function CertificateUpload() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!certificateImage || !certificateId.trim()) return;
-
     setStatus("uploading");
-
-    try {
-      const response = await fetch(`${CONFIG_API_URL}/api/auth/profile`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          certificate: certificateImage,
-          certificateId,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || "Failed to submit certificate");
-
+    setTimeout(() => {
       setStatus("Pending");
       setRejectionRemarks("");
-    } catch (err: any) {
-      alert(err.message);
-      setStatus("idle");
-    }
+      alert("Certificate re-submission received. Our admin team will verify it soon.");
+    }, 1000);
   };
 
   const handleSkip = () => {

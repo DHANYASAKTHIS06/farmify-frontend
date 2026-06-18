@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Sprout, User, Mail, Lock, Phone, MapPin, FileText, ArrowLeft, Loader2 } from "lucide-react";
+import { Sprout, User, Mail, Lock, Phone, MapPin, FileText, ArrowLeft, Loader2, Upload, X } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,19 +12,39 @@ export default function Register() {
   const [role, setRole] = useState<"Customer" | "Farmer">("Customer");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     contactNumber: "",
-    locationName: "",
     // Farmer fields
     farmName: "",
     farmDescription: "",
     farmAddress: "",
-    farmCategory: "Vegetables",
+    farmCategory: "Organic Vegetables",
   });
+
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
+  const [certificatePreview, setCertificatePreview] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCertificateFile(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        setCertificatePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeCertificate = () => {
+    setCertificateFile(null);
+    setCertificatePreview(null);
+  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,34 +53,40 @@ export default function Register() {
       return;
     }
 
-    if (role === "Farmer" && (!formData.farmName || !formData.farmAddress)) {
-      setError("Please fill in all Farm details");
-      return;
+    if (role === "Farmer") {
+      if (!formData.farmName || !formData.farmAddress) {
+        setError("Please fill in all Farm details");
+        return;
+      }
+      if (!certificateFile) {
+        setError("Please upload your farming certificate");
+        return;
+      }
     }
 
     setIsLoading(true);
     setError("");
+    setSuccess("");
 
     try {
-      const payload = {
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        role,
-        contactNumber: formData.contactNumber,
-        locationName: role === "Farmer" ? formData.farmAddress : formData.locationName,
-        farmName: role === "Farmer" ? formData.farmName : undefined,
-        farmDescription: role === "Farmer" ? formData.farmDescription : undefined,
-        farmAddress: role === "Farmer" ? formData.farmAddress : undefined,
-        farmCategory: role === "Farmer" ? formData.farmCategory : undefined,
-      };
+      const dataPayload = new FormData();
+      dataPayload.append("name", formData.name);
+      dataPayload.append("email", formData.email);
+      dataPayload.append("password", formData.password);
+      dataPayload.append("role", role);
+      dataPayload.append("contactNumber", formData.contactNumber);
+
+      if (role === "Farmer") {
+        dataPayload.append("farmName", formData.farmName);
+        dataPayload.append("farmDescription", formData.farmDescription);
+        dataPayload.append("farmAddress", formData.farmAddress);
+        dataPayload.append("farmCategory", formData.farmCategory);
+        dataPayload.append("certificate", certificateFile as Blob);
+      }
 
       const response = await fetch(`${CONFIG_API_URL}/api/auth/signup`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+        body: dataPayload,
       });
 
       const data = await response.json();
@@ -69,10 +95,10 @@ export default function Register() {
         throw new Error(data.message || "Registration failed");
       }
 
-      // Save email for OTP page
-      localStorage.setItem("otpEmail", formData.email);
-      localStorage.setItem("otpRole", role);
-      navigate("/otp-verification");
+      setSuccess("Account registered successfully! Redirecting to sign in...");
+      setTimeout(() => {
+        navigate("/login");
+      }, 2000);
     } catch (err: any) {
       setError(err.message || "Connection error. Please try again.");
     } finally {
@@ -90,7 +116,6 @@ export default function Register() {
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <span className="text-sm text-green-800 font-semibold">Step 1 of 2</span>
       </div>
 
       {/* Brand */}
@@ -99,7 +124,7 @@ export default function Register() {
         <p className="text-sm text-green-600 font-medium">Join the organic farm community</p>
       </div>
 
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-8 max-h-[85vh] overflow-y-auto">
         {/* Role Selection Tabs */}
         <div className="flex bg-green-50 p-1.5 rounded-2xl mb-6">
           <button
@@ -131,6 +156,12 @@ export default function Register() {
         {error && (
           <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3 text-center">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 bg-green-50 border border-green-200 text-green-750 text-sm rounded-xl p-3 text-center">
+            {success}
           </div>
         )}
 
@@ -209,30 +240,13 @@ export default function Register() {
             </div>
           </div>
 
-          {role === "Customer" ? (
-            /* Customer Location (Optional) */
-            <div className="space-y-1">
-              <Label htmlFor="locationName" className="text-green-850 font-bold">
-                City / Location
-              </Label>
-              <div className="relative">
-                <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-green-600" />
-                <Input
-                  id="locationName"
-                  placeholder="Thanjavur, Tamil Nadu"
-                  value={formData.locationName}
-                  onChange={(e) => setFormData({ ...formData, locationName: e.target.value })}
-                  className="pl-11 rounded-xl border-green-200"
-                />
-              </div>
-            </div>
-          ) : (
+          {role === "Farmer" && (
             /* Farmer Fields */
             <div className="space-y-4 pt-4 border-t border-green-100">
               <h3 className="font-bold text-green-800 text-lg">Farm Information</h3>
 
               <div className="space-y-1">
-                <Label htmlFor="farmName" className="text-green-850 font-bold">
+                <Label htmlFor="farmName" className="text-green-855 font-bold">
                   Farm Name *
                 </Label>
                 <div className="relative">
@@ -248,28 +262,26 @@ export default function Register() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="farmCategory" className="text-green-850 font-bold">
-                    Farm Category *
-                  </Label>
-                  <select
-                    id="farmCategory"
-                    value={formData.farmCategory}
-                    onChange={(e) => setFormData({ ...formData, farmCategory: e.target.value })}
-                    className="w-full p-3 bg-white border border-green-200 rounded-xl focus:outline-none focus:border-green-500 font-medium text-green-800"
-                  >
-                    <option value="Organic Vegetables">Vegetables</option>
-                    <option value="Dairy Farm">Dairy Farm</option>
-                    <option value="Fruit Orchard">Fruit Orchard</option>
-                    <option value="Rice Fields">Rice Fields</option>
-                    <option value="Poultry">Poultry</option>
-                  </select>
-                </div>
+              <div className="space-y-1">
+                <Label htmlFor="farmCategory" className="text-green-855 font-bold">
+                  Farm Category *
+                </Label>
+                <select
+                  id="farmCategory"
+                  value={formData.farmCategory}
+                  onChange={(e) => setFormData({ ...formData, farmCategory: e.target.value })}
+                  className="w-full p-3 bg-white border border-green-200 rounded-xl focus:outline-none focus:border-green-500 font-medium text-green-800"
+                >
+                  <option value="Organic Vegetables">Vegetables</option>
+                  <option value="Dairy Farm">Dairy Farm</option>
+                  <option value="Fruit Orchard">Fruit Orchard</option>
+                  <option value="Rice Fields">Rice Fields</option>
+                  <option value="Poultry">Poultry</option>
+                </select>
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="farmAddress" className="text-green-850 font-bold">
+                <Label htmlFor="farmAddress" className="text-green-855 font-bold">
                   Farm Address *
                 </Label>
                 <div className="relative">
@@ -286,7 +298,7 @@ export default function Register() {
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="farmDescription" className="text-green-850 font-bold">
+                <Label htmlFor="farmDescription" className="text-green-855 font-bold">
                   Farm Description
                 </Label>
                 <div className="relative">
@@ -299,6 +311,52 @@ export default function Register() {
                     className="pl-11 rounded-xl border-green-200 min-h-[90px]"
                   />
                 </div>
+              </div>
+
+              {/* Certificate Upload Field (Required for signup) */}
+              <div className="space-y-2 pt-2">
+                <Label className="text-green-855 font-bold">Organic Certificate Upload *</Label>
+                {certificatePreview ? (
+                  <div className="relative border border-green-200 rounded-xl p-4 bg-green-50/20 flex items-center justify-between shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-green-100 p-2.5 rounded-xl text-green-600">
+                        <FileText className="w-7 h-7" />
+                      </div>
+                      <div className="text-left">
+                        <p className="text-sm font-bold text-green-800 truncate max-w-[200px]">
+                          {certificateFile?.name || "Uploaded Certificate"}
+                        </p>
+                        <p className="text-xs text-green-650 font-medium">
+                          {certificateFile ? `${(certificateFile.size / 1024 / 1024).toFixed(2)} MB` : "Ready to upload"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeCertificate}
+                      className="bg-red-500 text-white p-2 rounded-full hover:bg-red-600 shadow-sm transition-all"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="certificate-input"
+                    className="border-2 border-dashed border-green-300 rounded-xl p-6 flex flex-col items-center justify-center hover:border-green-500 transition-colors cursor-pointer bg-green-50/20 w-full"
+                  >
+                    <Upload className="w-8 h-8 text-green-600 mb-1" />
+                    <p className="text-xs text-green-850 font-bold">Upload scanned copy / photo</p>
+                    <p className="text-[10px] text-green-650">PNG, JPG, PDF up to 5MB</p>
+                    <input
+                      id="certificate-input"
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      required
+                    />
+                  </label>
+                )}
               </div>
             </div>
           )}
@@ -314,7 +372,7 @@ export default function Register() {
                 Creating Account...
               </span>
             ) : (
-              "Sign Up & Verify"
+              "Sign Up"
             )}
           </Button>
         </form>

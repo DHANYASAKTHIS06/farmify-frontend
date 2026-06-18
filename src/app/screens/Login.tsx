@@ -36,23 +36,17 @@ export default function Login() {
       const data = await response.json();
 
       if (!response.ok) {
-        if (data.notVerified) {
-          // Redirect to OTP verification
-          localStorage.setItem("otpEmail", data.email);
-          navigate("/otp-verification");
-          return;
-        }
         throw new Error(data.message || "Invalid credentials");
       }
 
       // Save token & user to localStorage
       localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("user", JSON.stringify({ ...data.user, role: data.role }));
 
       // Role based routing
-      if (data.user.role === "Admin") {
+      if (data.role === "Admin") {
         navigate("/admin-dashboard");
-      } else if (data.user.role === "Farmer") {
+      } else if (data.role === "Farmer") {
         // Go to farmer product/farm management
         navigate("/farmer-product-upload");
       } else {
